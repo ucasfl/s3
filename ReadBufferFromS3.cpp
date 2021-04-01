@@ -27,6 +27,19 @@ namespace ErrorCodes
     extern const int SEEK_POSITION_OUT_OF_BOUND;
 }
 
+namespace
+{
+template <typename Result, typename Error>
+void throwIfError(Aws::Utils::Outcome<Result, Error> & response)
+{
+    if (!response.IsSuccess())
+    {
+        const auto & err = response.GetError();
+        throw Exception(err.GetMessage() + ", after retry exception", static_cast<int>(err.GetErrorType()));
+    }
+}
+}
+
 
 ReadBufferFromS3::ReadBufferFromS3(
     std::shared_ptr<Aws::S3::S3Client> client_ptr_, const String & bucket_, const String & key_, size_t buffer_size_)
@@ -126,22 +139,32 @@ std::unique_ptr<ReadBuffer> ReadBufferFromS3::initialize()
     if (new_offset != 0)
         req.SetRange("bytes=" + std::to_string(new_offset) + "-");
 
-    Aws::S3::Model::GetObjectOutcome outcome = client_ptr->GetObject(req);
-
-    LOG_DEBUG(log, "uuid = " + toString(uuid));
-
-    if (outcome.IsSuccess())
+    int retry = 8;
+    long sleep = 10;
+    while (retry > 0)
     {
-        read_result = outcome.GetResultWithOwnership();
-        auto len = read_result.GetContentLength();
-        if (!len)
-            LOG_DEBUG(log, "Content Length = 0");
-        auto res = std::make_unique<ReadBufferFromIStream>(read_result.GetBody(), buffer_size);
-        res->uuid = uuid;
-        return res;
+        try
+        {
+            Aws::S3::Model::GetObjectOutcome outcome = client_ptr->GetObject(req);
+
+            throwIfError(outcome);
+
+            read_result = outcome.GetResultWithOwnership();
+            auto len = read_result.GetContentLength();
+            if (!len)
+                LOG_DEBUG(log, "Content Length = 0");
+            auto res = std::make_unique<ReadBufferFromIStream>(read_result.GetBody(), buffer_size);
+            return res;
+        }
+        catch (Exception & e)
+        {
+            if (--retry == 0)
+                throw e;
+            Poco::Thread::sleep(sleep);
+            sleep *= 2;
+        }
     }
-    else
-        throw Exception(outcome.GetError().GetMessage(), ErrorCodes::S3_ERROR);
+    return nullptr;
 }
 
 }
