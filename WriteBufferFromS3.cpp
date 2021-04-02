@@ -144,10 +144,10 @@ void WriteBufferFromS3::initiate()
             LOG_DEBUG(log, "Multipart upload initiated. Upload id: {}", upload_id);
             retry = 0;
         }
-        catch (Exception & e)
+        catch (Exception &)
         {
             if (--retry == 0)
-                throw e;
+                throw;
             Poco::Thread::sleep(sleep);
             sleep *= 2;
         }
@@ -193,10 +193,10 @@ void WriteBufferFromS3::writePart()
 
             retry = 0;
         }
-        catch (Exception & e)
+        catch (Exception &)
         {
             if (--retry == 0)
-                throw e;
+                throw;
             Poco::Thread::sleep(sleep);
             sleep *= 2;
         }
@@ -213,6 +213,8 @@ void WriteBufferFromS3::writePartParallel(size_t subpart_size)
     const char * data = string.data();
 
     size_t subpart_number = total_size / subpart_size;
+    if (!subpart_number)
+        subpart_number = 1;
     size_t current_part_number = part_tags.size();
 
     if (part_tags.size() + subpart_number >= S3_WARN_MAX_PARTS)
@@ -264,10 +266,10 @@ void WriteBufferFromS3::writePartParallel(size_t subpart_size)
                 LOG_DEBUG(log, "Writing part finished. Total parts: {}, Upload_id: {}, Etag: {}", part_tags.size(), upload_id, etag);
                 retry = 0;
             }
-            catch (Exception & e)
+            catch (Exception &)
             {
                 if (--retry == 0)
-                    throw e;
+                    throw;
                 Poco::Thread::sleep(sleep);
                 sleep *= 2;
             }
@@ -352,10 +354,10 @@ void WriteBufferFromS3::complete()
                 LOG_DEBUG(log, "Multipart upload completed. Upload_id: {}", upload_id);
                 retry = 0;
             }
-            catch (Exception & e)
+            catch (Exception &)
             {
                 if (--retry == 0)
-                    throw e;
+                    throw;
                 Poco::Thread::sleep(sleep);
                 sleep *= 2;
             }
@@ -391,10 +393,10 @@ void WriteBufferFromS3::complete()
                     log, "Single part upload has completed. Bucket: {}, Key: {}, Object size: {}", bucket, key, req.GetContentLength());
                 retry = 0;
             }
-            catch (Exception & e)
+            catch (Exception &)
             {
                 if (--retry == 0)
-                    throw e;
+                    throw;
                 Poco::Thread::sleep(sleep);
                 sleep *= 2;
             }
